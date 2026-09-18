@@ -1,3 +1,4 @@
+# 카피본입니다. 테스트용으로 사용하고있습니다. 사용하지 않는게 좋습니다.
 # 표준프레임워크 공통컴포넌트
 
 ![java](https://img.shields.io/badge/java-007396?style=for-the-badge&logo=JAVA&logoColor=white)
