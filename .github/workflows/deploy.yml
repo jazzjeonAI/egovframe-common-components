@@ -49,10 +49,34 @@ jobs:
 
       - name: Configure SSH
         shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
         run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "DEPLOY_HOST secret is required"
+            exit 65
+          fi
+
           install -d -m 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/id_ed25519
+
+          read -r FIELD1 FIELD2 FIELD3 _ <<< "$(printf '%s\n' "$DEPLOY_KNOWN_HOSTS" | head -n 1)"
+          if [[ "$FIELD1" == ssh-* || "$FIELD1" == ecdsa-* ]]; then
+            KEY_TYPE="$FIELD1"
+            KEY_DATA="$FIELD2"
+          else
+            KEY_TYPE="$FIELD2"
+            KEY_DATA="$FIELD3"
+          fi
+
+          if [ -z "$KEY_TYPE" ] || [ -z "$KEY_DATA" ]; then
+            echo "DEPLOY_KNOWN_HOSTS secret is invalid"
+            exit 66
+          fi
+
+          printf '[%s]:22369 %s %s\n' "$DEPLOY_HOST" "$KEY_TYPE" "$KEY_DATA" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
 
       - name: Deploy merged source
