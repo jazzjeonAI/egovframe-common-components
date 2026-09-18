@@ -1,0 +1,76 @@
+name: Deploy after PR merge
+
+on:
+  pull_request_target:
+    types: [closed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: Optional 40-character commit SHA on origin/main
+        required: false
+        type: string
+
+concurrency:
+  group: egovframe-production-deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Resolve deployment SHA
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          MANUAL_SHA: ${{ inputs.commit_sha }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ] && [ -n "$MANUAL_SHA" ]; then
+            SHA="$MANUAL_SHA"
+          elif [ "$EVENT_NAME" = "pull_request_target" ]; then
+            SHA="$MERGE_SHA"
+          else
+            SHA="$GITHUB_SHA"
+          fi
+
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid deployment SHA: $SHA"
+            exit 64
+          fi
+
+          echo "DEPLOY_SHA=$SHA" >> "$GITHUB_ENV"
+
+      - name: Configure SSH
+        shell: bash
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${{ secrets.DEPLOY_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_ed25519 ~/.ssh/known_hosts
+
+      - name: Deploy merged source
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          if [ -z "$DEPLOY_HOST" ]; then
+            echo "DEPLOY_HOST secret is required"
+            exit 65
+          fi
+
+          ssh \
+            -i ~/.ssh/id_ed25519 \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile=~/.ssh/known_hosts \
+            -o ConnectTimeout=15 \
+            gpt_jazz@"$DEPLOY_HOST" \
+            "deploy $DEPLOY_SHA"
