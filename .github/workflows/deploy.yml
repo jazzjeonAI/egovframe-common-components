@@ -66,6 +66,7 @@ jobs:
           fi
 
           ssh \
+            -p 22369 \
             -i ~/.ssh/id_ed25519 \
             -o BatchMode=yes \
             -o IdentitiesOnly=yes \
